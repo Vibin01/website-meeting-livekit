@@ -2,24 +2,29 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   Check,
   Copy,
   Lock,
   Microphone,
   MicrophoneSlash,
   ShieldCheck,
+  Sparkle,
   VideoCamera,
   VideoCameraSlash,
 } from '@phosphor-icons/react';
+import type { RoomInfo } from '@/app/actions/auth';
 
 interface WelcomeViewProps {
   tokenId: string;
   userEmail: string;
   userRole: string;
   onJoin: (choices: { cameraEnabled: boolean; micEnabled: boolean }) => void;
+  roomInfo?: RoomInfo | null;
+  onBack?: () => void;
 }
 
-export function WelcomeView({ tokenId, userEmail, userRole, onJoin }: WelcomeViewProps) {
+export function WelcomeView({ tokenId, userEmail, userRole, onJoin, roomInfo, onBack }: WelcomeViewProps) {
   // Local media preview state
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [micEnabled, setMicEnabled] = useState(true);
@@ -108,13 +113,27 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin }: WelcomeVie
       <div className="w-full max-w-4xl rounded-3xl border border-[#DCEBFF] bg-white p-6 shadow-xl transition-all sm:p-10 dark:border-neutral-800 dark:bg-neutral-900">
         {/* Top Header */}
         <div className="flex flex-col justify-between gap-3 border-b border-[#D1E5FF] pb-5 sm:flex-row sm:items-center dark:border-neutral-800">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
-              Meeting Lobby
-            </h1>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Preview your audio &amp; video before entering the room
-            </p>
+          <div className="flex items-center gap-3">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                aria-label="Back to code entry"
+                className="flex size-9 cursor-pointer items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-600 transition-all hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              >
+                <ArrowLeft className="size-4" />
+              </button>
+            )}
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
+                {roomInfo?.room_name || 'Meeting Lobby'}
+              </h1>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                {roomInfo?.meeting_phase_type
+                  ? `Phase: ${roomInfo.meeting_phase_type.toUpperCase()} • Check audio & video`
+                  : 'Preview your audio & video before entering the room'}
+              </p>
+            </div>
           </div>
 
           {/* Authenticated user badge */}
@@ -230,13 +249,22 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin }: WelcomeVie
               </div>
             </div>
 
-            {/*  Field 3: Room Code / Token ID */}
+            {/* Field 3: Room Code / Token ID */}
             <div>
               <label className="mb-1 flex items-center justify-between text-xs font-semibold tracking-wider text-neutral-600 uppercase dark:text-neutral-400">
-                <span>Room Name / Code</span>
+                <span>Room Code</span>
+                {roomInfo?.agent_name && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-[#0668E1] dark:text-[#3B82F6]">
+                    <Sparkle className="size-3 text-amber-500" weight="fill" />
+                    AI Agent: {roomInfo.agent_name}
+                  </span>
+                )}
               </label>
-              <div className="rounded-xl border border-neutral-200 bg-neutral-100/80 px-3.5 py-2.5 font-mono text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200">
-                {tokenId}
+              <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-100/80 px-3.5 py-2.5 font-mono text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200">
+                <span>{roomInfo?.room_code || tokenId}</span>
+                <span className="text-[11px] font-sans font-medium text-emerald-600 dark:text-emerald-400">
+                  Verified
+                </span>
               </div>
             </div>
 

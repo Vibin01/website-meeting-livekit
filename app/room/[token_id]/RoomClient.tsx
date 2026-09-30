@@ -6,6 +6,7 @@ import { LiveKitRoom } from '@livekit/components-react';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { MeetingRoom } from '@/components/room/meeting-room';
 import { WelcomeView } from '@/components/room/welcome-view';
+import { verifyMeetingCode, type RoomInfo } from '@/app/actions/auth';
 
 interface RoomClientProps {
   tokenId: string;
@@ -23,6 +24,7 @@ export function RoomClient({ tokenId }: RoomClientProps) {
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('Candidate');
+  const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [connDetails, setConnDetails] = useState<ConnectionDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -55,12 +57,36 @@ export function RoomClient({ tokenId }: RoomClientProps) {
 
     let isMounted = true;
 
-    // 3. Create/Fetch token from /api/token with user's mail ID
+    // 3. Verify meeting code with ConnectEC Elixir backend or fallback to /api/token
     async function fetchToken() {
       try {
         setLoading(true);
         setErrorMessage(null);
 
+        // First attempt: ConnectEC meeting code verification
+        const verifyRes = await verifyMeetingCode(tokenId);
+
+        if (verifyRes.success && verifyRes.data?.room_access_token) {
+          if (isMounted) {
+            setRoomInfo(verifyRes.data.room_info);
+            setConnDetails({
+              serverUrl:
+                process.env.NEXT_PUBLIC_LIVEKIT_URL ||
+                'wss://testing-l62y21m7.livekit.cloud',
+              roomName: verifyRes.data.room_info.room_code || tokenId,
+              participantName: email as string,
+              participantToken: verifyRes.data.room_access_token,
+            });
+          }
+          return;
+        }
+
+        // If verify returned an expired or unauthorized error, display it
+        if (verifyRes.message && verifyRes.message.toLowerCase().includes('expired')) {
+          throw new Error(verifyRes.message);
+        }
+
+        // Fallback: local LiveKit token generator (for custom dev rooms)
         const res = await fetch(
           `/api/token?room=${encodeURIComponent(tokenId)}&name=${encodeURIComponent(
             email as string
@@ -69,7 +95,9 @@ export function RoomClient({ tokenId }: RoomClientProps) {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Failed to fetch token: HTTP ${res.status}`);
+          throw new Error(
+            verifyRes.message || errData.error || `Failed to fetch token: HTTP ${res.status}`
+          );
         }
 
         const data: ConnectionDetails = await res.json();
@@ -142,6 +170,13 @@ export function RoomClient({ tokenId }: RoomClientProps) {
             </button>
             <button
               type="button"
+              onClick={() => router.push('/')}
+              className="rounded-xl border border-[#DCEBFF] bg-[#F2F8FF] px-4 py-2.5 text-xs font-semibold text-[#0668E1] hover:bg-[#E5F0FF] transition-all"
+            >
+              Meeting Dashboard
+            </button>
+            <button
+              type="button"
               onClick={() => router.push('/login')}
               className="rounded-xl bg-[#0668E1] px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-[#0668E1]/20 hover:bg-[#005FCC] transition-all"
             >
@@ -160,7 +195,9 @@ export function RoomClient({ tokenId }: RoomClientProps) {
         tokenId={tokenId}
         userEmail={userEmail || 'guest@example.com'}
         userRole={userRole}
+        roomInfo={roomInfo}
         onJoin={handleJoinFromWelcome}
+        onBack={() => router.push('/')}
       />
     );
   }

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 import { CircleNotch, Eye, EyeSlash, WarningCircle } from '@phosphor-icons/react';
 import { type UserType, login } from '@/app/actions/auth';
+import { phoenixFetch } from '@/lib/auth/api-helpers';
 
 function LoginForm() {
   const router = useRouter();
@@ -40,6 +41,10 @@ function LoginForm() {
     setIsLoading(true);
 
     try {
+
+
+  
+
       // Authenticate with server action (auth.ts is untouched)
       const result = await login({
         contact: email.trim(),
@@ -56,13 +61,10 @@ function LoginForm() {
           localStorage.setItem('user_role', userType);
         }
 
-        const targetRoom = (roomId.trim() || 'interview-meeting-room').replace(/\s+/g, '-');
-
-        // Route to /room/[token_id]
         if (callbackUrl && callbackUrl.startsWith('/room/')) {
           router.push(callbackUrl);
         } else {
-          router.push(`/room/${encodeURIComponent(targetRoom)}`);
+          router.push('/');
         }
       } else {
         setErrorMessage(result.error || 'Login failed. Please verify your credentials.');
@@ -181,7 +183,7 @@ function LoginForm() {
         </div>
 
         {/* Room / Token ID Input */}
-        <div>
+        {/* <div>
           <label
             htmlFor="login-room-id"
             className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
@@ -200,7 +202,7 @@ function LoginForm() {
           <p className="mt-1 text-[11px] text-neutral-400">
             All participants with this room ID will join together
           </p>
-        </div>
+        </div> */}
 
         {/* Submit Button */}
         <div className="pt-2">
