@@ -1,35 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 1. Specify protected and public routes
 const protectedRoutes = ['/'];
 const publicRoutes = ['/login'];
+const COOKIE_NAME = '_connect_ec_backend_key';
 
 export function middleware(req: NextRequest) {
-  // 2. Check if the current route is protected or public
-  const path = req.nextUrl.pathname;
+  try {
+    const { pathname } = req.nextUrl;
 
-  const isProtectedRoute = protectedRoutes.includes(path);
-  const isPublicRoute = publicRoutes.includes(path);
+    const isProtectedRoute = protectedRoutes.includes(pathname);
+    const isPublicRoute = publicRoutes.includes(pathname);
+    const hasCookie = req.cookies.has(COOKIE_NAME);
 
-  const COOKIE_NAME = '_connect_ec_backend_key';
-  const hasCookie = req.cookies.has(COOKIE_NAME);
+    // Rule 1: If logged in and trying to access an auth page (like /login), redirect to "/"
+    if (hasCookie && isPublicRoute) {
+      const homeUrl = req.nextUrl.clone();
+      homeUrl.pathname = '/';
+      homeUrl.search = '';
+      return NextResponse.redirect(homeUrl);
+    }
 
-  // Rule 1: If logged in and trying to access an auth page (like /login), redirect to "/"
-  if (hasCookie && isPublicRoute) {
-    return NextResponse.redirect(new URL('/', req.nextUrl));
+    // Rule 2: If NOT logged in and trying to access a protected page, redirect to "/login"
+    if (!hasCookie && isProtectedRoute) {
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      loginUrl.searchParams.set('callbackUrl', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error('Middleware execution error:', error);
+    return NextResponse.next();
   }
-
-  // Rule 2: If NOT logged in and trying to access a protected page, redirect to "/login"
-  if (!hasCookie && isProtectedRoute) {
-    const loginUrl = new URL('/login', req.nextUrl);
-    loginUrl.searchParams.set('callbackUrl', path);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  return NextResponse.next();
 }
 
-// Routes Middleware should not run on
+// Routes Middleware should not run on (static assets, api, etc.)
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|.*\\.png$).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2|ttf|otf)$).*)',
+  ],
 };
