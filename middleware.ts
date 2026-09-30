@@ -1,11 +1,10 @@
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 // 1. Specify protected and public routes
 const protectedRoutes = ['/'];
 const publicRoutes = ['/login'];
 
-export default async function middleware(req: NextRequest) {
+export function middleware(req: NextRequest) {
   // 2. Check if the current route is protected or public
   const path = req.nextUrl.pathname;
 
@@ -17,13 +16,12 @@ export default async function middleware(req: NextRequest) {
 
   // Rule 1: If logged in and trying to access an auth page (like /login), redirect to "/"
   if (hasCookie && isPublicRoute) {
-    return NextResponse.redirect(new URL('/', req.url));
+    return NextResponse.redirect(new URL('/', req.nextUrl));
   }
 
   // Rule 2: If NOT logged in and trying to access a protected page, redirect to "/login"
   if (!hasCookie && isProtectedRoute) {
-    // Optional: Pass the original path as a query param to redirect back after login
-    const loginUrl = new URL('/login', req.url);
+    const loginUrl = new URL('/login', req.nextUrl);
     loginUrl.searchParams.set('callbackUrl', path);
     return NextResponse.redirect(loginUrl);
   }
