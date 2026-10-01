@@ -26,6 +26,36 @@ export interface LoginResult {
   error?: string;
 }
 
+export interface RoomInfo {
+  user_type: string;
+  user_id: number;
+  expires_at: string;
+  created_on: string;
+  room_code: string;
+  context_type: string;
+  participant_role: string;
+  starts_at: string;
+  room_name: string;
+  meeting_phase_type: string;
+  meeting_context_id: number;
+  meeting_room_id: number;
+  actual_started_at?: string | null;
+  actual_ended_at?: string | null;
+  agent_name?: string;
+}
+
+export interface VerifyCodeResult {
+  success: boolean;
+  status: 'success' | 'fail';
+  message?: string;
+  data?: {
+    room_access_token: string;
+    room_info: RoomInfo;
+    livekit_url?: string;
+  };
+}
+
+
 const COOKIE_NAME = '_connect_ec_backend_key';
 
 export async function login(params: LoginParams | FormData): Promise<LoginResult> {
@@ -86,6 +116,10 @@ export async function login(params: LoginParams | FormData): Promise<LoginResult
       'https://uat.api.connectec.app/api/login',
       payload
     );
+
+    console.log('Login Response:', loginResponse);
+
+
 
     if (!loginResponse) {
       return {
@@ -153,33 +187,6 @@ export async function login(params: LoginParams | FormData): Promise<LoginResult
   }
 }
 
-export interface RoomInfo {
-  user_type: string;
-  user_id: number;
-  expires_at: string;
-  created_on: string;
-  room_code: string;
-  context_type: string;
-  participant_role: string;
-  starts_at: string;
-  room_name: string;
-  meeting_phase_type: string;
-  meeting_context_id: number;
-  meeting_room_id: number;
-  actual_started_at?: string | null;
-  actual_ended_at?: string | null;
-  agent_name?: string;
-}
-
-export interface VerifyCodeResult {
-  success: boolean;
-  status: 'success' | 'fail';
-  message?: string;
-  data?: {
-    room_access_token: string;
-    room_info: RoomInfo;
-  };
-}
 
 export async function verifyMeetingCode(rawCodeOrLink: string): Promise<VerifyCodeResult> {
   try {
@@ -206,11 +213,16 @@ export async function verifyMeetingCode(rawCodeOrLink: string): Promise<VerifyCo
 
     const json = await response.json().catch(() => null);
 
+    console.log("Verify Meeting Code: ", json)
+
     if (json?.status === 'success' && json?.data?.room_access_token) {
       return {
         success: true,
         status: 'success',
-        data: json.data,
+        data: {
+          ...json.data,
+          livekit_url: process.env.LIVEKIT_URL || '',
+        },
       };
     } else {
       return {
@@ -229,12 +241,71 @@ export async function verifyMeetingCode(rawCodeOrLink: string): Promise<VerifyCo
   }
 }
 
+export interface MeetingItem {
+  id?: number | string;
+  room_code: string;
+  room_name?: string;
+  expired?: boolean;
+  status?: string;
+  context_type?: string;
+  meeting_phase_type?: string;
+  participant_role?: string;
+  starts_at?: string;
+  expires_at?: string;
+  created_on?: string;
+  meeting_context_id?: number | string;
+  meeting_room_id?: number | string;
+  actual_started_at?: string | null;
+  actual_ended_at?: string | null;
+  agent_name?: string;
+  [key: string]: unknown;
+}
+
+export interface GetAllMeetingsResult {
+  success: boolean;
+  status?: string;
+  message?: string;
+  data?: MeetingItem[];
+}
+
+export async function getAllMeetings() {
+  try {
+    const response = await phoenixFetch(
+      'https://uat.api.connectec.app/api/meeting/list-all'
+    );
+
+    const json = await response.json().catch(() => null);
+
+    console.log("All meeting link", json)
+
+    if (!response.ok) {
+      return {
+        success: false,
+        message: json?.message || 'Failed to fetch meetings',
+      };
+    }
+
+    return {
+      success: true,
+      data: json?.data || [],
+    };
+  } catch (error) {
+    console.error('getAllMeetings error:', error);
+
+    return {
+      success: false,
+      message: 'Failed to retrieve meetings.',
+    };
+  }
+}
+
 export async function getScheduledMeeting(contextType = 'job_application') {
   try {
     const response = await phoenixFetch(
-      `https://uat.api.connectec.app/api/meeting/schedule?context_type=${encodeURIComponent(contextType)}`
+      `https://uat.api.connectec.app/api/meeting/schedule?context_type=${contextType}`
     );
     const json = await response.json().catch(() => null);
+    console.log("schedule Meeting:", json);
     return json;
   } catch (error: unknown) {
     console.error('getScheduledMeeting error:', error);
@@ -245,7 +316,6 @@ export async function getScheduledMeeting(contextType = 'job_application') {
 export async function logout() {
   const cookieStore = await cookies();
   cookieStore.delete('_connect_ec_backend_key');
-  cookieStore.delete('user_contact');
-  cookieStore.delete('user_role');
 }
+
 

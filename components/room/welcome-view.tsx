@@ -3,9 +3,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Check,
-  Copy,
-  Lock,
   Microphone,
   MicrophoneSlash,
   ShieldCheck,
@@ -129,16 +126,13 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin, roomInfo, on
                 {roomInfo?.room_name || 'Meeting Lobby'}
               </h1>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                {roomInfo?.meeting_phase_type
-                  ? `Phase: ${roomInfo.meeting_phase_type.toUpperCase()} • Check audio & video`
-                  : 'Preview your audio & video before entering the room'}
+                 Preview your audio & video before entering the room
               </p>
             </div>
           </div>
 
           {/* Authenticated user badge */}
           <div className="flex items-center gap-2 rounded-full border border-[#DCEBFF] bg-[#F2F8FF] px-3.5 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-800">
-            <ShieldCheck className="size-4 text-[#0668E1]" weight="bold" />
             <span className="font-semibold text-neutral-800 dark:text-neutral-200">{userEmail}</span>
             <span className="rounded-full bg-[#0668E1] px-2 py-0.5 text-[10px] font-semibold text-white">
               {userRole}
@@ -229,9 +223,7 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin, roomInfo, on
               </label>
               <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-100/80 px-3.5 py-2.5 text-sm font-medium text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200">
                 <span className="truncate">{userEmail}</span>
-                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                  Verified
-                </span>
+                
               </div>
             </div>
 
@@ -243,9 +235,7 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin, roomInfo, on
               </label>
               <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-100/80 px-3.5 py-2.5 text-sm font-medium text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200">
                 <span>{userRole}</span>
-                <span className="rounded-md bg-[#0668E1]/15 px-2 py-0.5 text-[11px] font-semibold text-[#0668E1] dark:text-[#3B82F6]">
-                  {userRole}
-                </span>
+                
               </div>
             </div>
 
@@ -253,12 +243,7 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin, roomInfo, on
             <div>
               <label className="mb-1 flex items-center justify-between text-xs font-semibold tracking-wider text-neutral-600 uppercase dark:text-neutral-400">
                 <span>Room Code</span>
-                {roomInfo?.agent_name && (
-                  <span className="flex items-center gap-1 text-[11px] font-medium text-[#0668E1] dark:text-[#3B82F6]">
-                    <Sparkle className="size-3 text-amber-500" weight="fill" />
-                    AI Agent: {roomInfo.agent_name}
-                  </span>
-                )}
+                
               </label>
               <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-100/80 px-3.5 py-2.5 font-mono text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200">
                 <span>{roomInfo?.room_code || tokenId}</span>
@@ -281,7 +266,7 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin, roomInfo, on
             </div>
             {/* Copy Meeting Link */}
 
-{userRole == "Panal"|| userRole== "Recuiter" &&(
+            {(userRole.toLowerCase() === 'panel' || userRole.toLowerCase() === 'recruiter') && (
             <button
               type="button"
               onClick={handleCopyLink}
@@ -289,12 +274,10 @@ export function WelcomeView({ tokenId, userEmail, userRole, onJoin, roomInfo, on
             >
               {copiedLink ? (
                 <>
-                  <Check className="size-4 text-emerald-600" weight="bold" />
                   <span className="font-semibold text-emerald-600">Meeting Link Copied!</span>
                 </>
               ) : (
                 <>
-                  <Copy className="size-4" />
                   <span>Copy shareable meeting link</span>
                 </>
               )}

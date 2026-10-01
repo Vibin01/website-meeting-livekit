@@ -35,15 +35,13 @@ export function RoomClient({ tokenId }: RoomClientProps) {
   const [initialMicEnabled, setInitialMicEnabled] = useState(true);
 
   useEffect(() => {
-    // 1. Retrieve user's mail ID and role from localStorage or cookies
-    let email = localStorage.getItem('user_contact');
-    let role = localStorage.getItem('user_role') || 'Candidate';
+    // 1. Retrieve user's mail ID and role from localStorage
+    let email = '';
+    let role = 'Candidate';
 
-    if (!email && typeof document !== 'undefined') {
-      const matchContact = document.cookie.match(/(?:^|;\s*)user_contact=([^;]+)/);
-      if (matchContact) email = decodeURIComponent(matchContact[1]);
-      const matchRole = document.cookie.match(/(?:^|;\s*)user_role=([^;]+)/);
-      if (matchRole) role = decodeURIComponent(matchRole[1]);
+    if (typeof window !== 'undefined') {
+      email = localStorage.getItem('user_contact') || '';
+      role = localStorage.getItem('user_role') || 'Candidate';
     }
 
     // 2. If user is not logged in, redirect to login with callback URL
@@ -57,22 +55,27 @@ export function RoomClient({ tokenId }: RoomClientProps) {
 
     let isMounted = true;
 
-    // 3. Verify meeting code with ConnectEC Elixir backend or fallback to /api/token
+    // 3. Verify meeting code with ConnectEC backend
     async function fetchToken() {
       try {
         setLoading(true);
         setErrorMessage(null);
 
-        // First attempt: ConnectEC meeting code verification
+        // ConnectEC meeting code verification
         const verifyRes = await verifyMeetingCode(tokenId);
+
+        console
 
         if (verifyRes.success && verifyRes.data?.room_access_token) {
           if (isMounted) {
             setRoomInfo(verifyRes.data.room_info);
+            const serverUrl =
+              verifyRes.data.livekit_url ||
+              process.env.LIVEKIT_URL ||
+              '';
+
             setConnDetails({
-              serverUrl:
-                process.env.NEXT_PUBLIC_LIVEKIT_URL ||
-                'wss://testing-l62y21m7.livekit.cloud',
+              serverUrl,
               roomName: verifyRes.data.room_info.room_code || tokenId,
               participantName: email as string,
               participantToken: verifyRes.data.room_access_token,
@@ -81,29 +84,16 @@ export function RoomClient({ tokenId }: RoomClientProps) {
           return;
         }
 
-        // If verify returned an expired or unauthorized error, display it
-        if (verifyRes.message && verifyRes.message.toLowerCase().includes('expired')) {
-          throw new Error(verifyRes.message);
+        if (
+          verifyRes.message === 'Unauthorized user.' ||
+          verifyRes.message?.toLowerCase().includes('unauthorized')
+        ) {
+          router.push(`/login?callbackUrl=/room/${encodeURIComponent(tokenId)}`);
+          return;
         }
 
-        // Fallback: local LiveKit token generator (for custom dev rooms)
-        const res = await fetch(
-          `/api/token?room=${encodeURIComponent(tokenId)}&name=${encodeURIComponent(
-            email as string
-          )}&role=${encodeURIComponent(role)}`
-        );
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(
-            verifyRes.message || errData.error || `Failed to fetch token: HTTP ${res.status}`
-          );
-        }
-
-        const data: ConnectionDetails = await res.json();
-        if (isMounted) {
-          setConnDetails(data);
-        }
+        // If verification fails or is expired, display server error message
+        throw new Error(verifyRes.message || 'Failed to verify meeting code');
       } catch (err: unknown) {
         if (isMounted) {
           const msg = err instanceof Error ? err.message : 'Error connecting to meeting room';
@@ -153,12 +143,6 @@ export function RoomClient({ tokenId }: RoomClientProps) {
             {errorMessage || 'Unable to establish connection to LiveKit meeting.'}
           </p>
 
-          {errorMessage?.includes('environment variables') && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-[11px] text-amber-800 leading-relaxed">
-              Please paste your <strong>LIVEKIT_URL</strong>, <strong>LIVEKIT_API_KEY</strong>, and{' '}
-              <strong>LIVEKIT_API_SECRET</strong> into the <code>.env.local</code> file in your project root, then restart or refresh.
-            </div>
-          )}
 
           <div className="mt-6 flex gap-3">
             <button
@@ -210,14 +194,16 @@ export function RoomClient({ tokenId }: RoomClientProps) {
       connect={true}
       video={initialCameraEnabled}
       audio={initialMicEnabled}
+      data-lk-theme="default"
       onError={(err) => {
         // Log gracefully instead of allowing unhandled throw
         console.warn('[LiveKitRoom] Signal/Connection event:', err?.message || err);
       }}
       onDisconnected={() => {
         console.log('[LiveKitRoom] Disconnected cleanly');
+        router.push('/');
       }}
-      className="h-full w-full"
+      className="h-screen w-screen overflow-hidden bg-[#1B1C17]"
     >
       <MeetingRoom
         tokenId={tokenId}

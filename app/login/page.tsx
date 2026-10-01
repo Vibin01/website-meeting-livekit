@@ -2,36 +2,33 @@
 
 import React, { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
+import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { CircleNotch, Eye, EyeSlash, WarningCircle } from '@phosphor-icons/react';
 import { type UserType, login } from '@/app/actions/auth';
-import { phoenixFetch } from '@/lib/auth/api-helpers';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const callbackUrl = searchParams.get('callbackUrl') || '';
-  const initialRoom =
-    searchParams.get('room') ||
-    (callbackUrl.startsWith('/room/') ? callbackUrl.replace('/room/', '') : '') ||
-    'interview-meeting-room';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState<UserType>('Recruiter');
-  const [roomId, setRoomId] = useState(initialRoom);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Prefill saved email or role if available
+  // Prefill saved email or role if available, and clear legacy cookies
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedEmail = localStorage.getItem('user_contact');
       const savedRole = localStorage.getItem('user_role') as UserType | null;
       if (savedEmail) setEmail(savedEmail);
       if (savedRole) setUserType(savedRole);
+
     }
   }, []);
 
@@ -42,9 +39,6 @@ function LoginForm() {
 
     try {
 
-
-  
-
       // Authenticate with server action (auth.ts is untouched)
       const result = await login({
         contact: email.trim(),
@@ -53,10 +47,9 @@ function LoginForm() {
       });
 
       if (result.success) {
-        // Save user email & role to cookies & localStorage for seamless room join
+        // Save user email & role to localStorage for seamless room join
         if (typeof document !== 'undefined') {
-          document.cookie = `user_contact=${encodeURIComponent(email.trim())}; path=/; max-age=2592000`;
-          document.cookie = `user_role=${encodeURIComponent(userType)}; path=/; max-age=2592000`;
+
           localStorage.setItem('user_contact', email.trim());
           localStorage.setItem('user_role', userType);
         }
@@ -215,7 +208,7 @@ function LoginForm() {
             {isLoading ? (
               <>
                 <CircleNotch className="size-5 animate-spin" />
-                <span>Signing in &amp; Connecting...</span>
+                <span>Checking...</span>
               </>
             ) : (
               <span>Join Room</span>
@@ -229,17 +222,33 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen w-screen items-center justify-center bg-gradient-to-br from-[#F2F8FF] via-white to-[#F2F8FF] p-4 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
-      <Suspense
-        fallback={
-          <div className="flex items-center gap-2 text-sm text-[#0668E1]">
-            <CircleNotch className="size-5 animate-spin" />
-            <span>Loading...</span>
-          </div>
-        }
-      >
-        <LoginForm />
-      </Suspense>
-    </main>
+    <div className="relative min-h-screen w-screen flex flex-col bg-gradient-to-br from-[#F2F8FF] via-white to-[#F2F8FF] dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+      {/* Fixed Navigation Bar */}
+      <header className="fixed top-0 left-0 right-0 z-50 flex h-20 w-full items-center justify-between border-b border-[#D8E9FF]/80 bg-white/85 px-6 backdrop-blur-md sm:px-12 dark:border-neutral-800 dark:bg-neutral-900/85">
+        <Link href="/" className="flex items-center transition-opacity hover:opacity-90">
+          <Image
+            src="/connect_ec_logo.svg"
+            alt="Connect EC Logo"
+            width={190}
+            height={38}
+            priority
+            className="h-9 w-auto object-contain dark:brightness-0 dark:invert"
+          />
+        </Link>
+      </header>
+
+      <main className="flex flex-1 items-center justify-center p-4 pt-24">
+        <Suspense
+          fallback={
+            <div className="flex items-center gap-2 text-sm text-[#0668E1]">
+              <CircleNotch className="size-5 animate-spin" />
+              <span>Loading...</span>
+            </div>
+          }
+        >
+          <LoginForm />
+        </Suspense>
+      </main>
+    </div>
   );
 }

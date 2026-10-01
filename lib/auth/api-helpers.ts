@@ -7,7 +7,7 @@ export const getRequest = async (url: string) => {
       method: 'GET',
       credentials: 'include',
     }).then((data) => data.json());
-
+    console.log("get Data:", result)
     return result;
   } catch (error) {
     console.log(error);
@@ -24,24 +24,7 @@ export const sendRequestReturnRaw = async (url: string, data: object) => {
       },
       credentials: 'include',
     });
-
-    return result;
-  } catch (error) {
-    console.log(error);
-  }
-};
-
-export const sendRequest = async (url: string, data: object) => {
-  try {
-    const result = await fetch(url, {
-      method: 'POST',
-      body: JSON.stringify(data),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    }).then((data) => data.json());
-
+    console.log("Send Login Request:", result)
     return result;
   } catch (error) {
     console.log(error);
@@ -59,6 +42,12 @@ export const phoenixFetch = async (url: string, options: RequestInit = {}) => {
 
   if (authCookie) {
     headers.set('Cookie', `${authCookie.name}=${authCookie.value}`);
+  } else {
+    const allCookies = cookieStore.getAll();
+    if (allCookies.length > 0) {
+      const cookieStr = allCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+      headers.set('Cookie', cookieStr);
+    }
   }
 
   return fetch(url, {
@@ -66,3 +55,4 @@ export const phoenixFetch = async (url: string, options: RequestInit = {}) => {
     headers,
   });
 };
+

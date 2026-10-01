@@ -1,8 +1,14 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Participant, RemoteParticipant, RoomEvent, Track } from 'livekit-client';
+import {
+  Participant,
+  RemoteParticipant,
+  RoomEvent,
+  Track,
+  type TranscriptionSegment,
+} from 'livekit-client';
 import {
   RoomAudioRenderer,
   useIsSpeaking,
@@ -17,9 +23,8 @@ import {
   CaretDown,
   CaretUp,
   ChatText,
-  Check,
   Clock,
-  Copy,
+  DownloadSimple,
   GraduationCap,
   Info,
   Microphone,
@@ -28,12 +33,12 @@ import {
   Robot,
   Screencast,
   Sparkle,
-  Trash,
   User,
   UsersThree,
   VideoCamera,
   VideoCameraSlash,
   WarningCircle,
+  X,
 } from '@phosphor-icons/react';
 import { ParticipantManager, ActivityLog } from './participant-manager';
 
@@ -52,6 +57,19 @@ interface MeetingRoomProps {
   userRole: string;
   initialCameraEnabled?: boolean;
   initialMicEnabled?: boolean;
+}
+
+// Helper to extract role from participant metadata safely
+function parseParticipantRole(p: Participant, fallbackRole = 'Candidate'): string {
+  try {
+    if (p.metadata) {
+      const parsed = JSON.parse(p.metadata);
+      if (parsed.role) return parsed.role;
+    }
+  } catch {
+    // fallback
+  }
+  return fallbackRole;
 }
 
 export function MeetingRoom({
@@ -76,9 +94,6 @@ export function MeetingRoom({
   // State: Call duration timer
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // State: Copied link toast feedback
-  const [copiedLink, setCopiedLink] = useState(false);
-
   // State: Full history of transcribed messages with auto-scrolling
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   // State: Currently active interim speech being spoken right now
@@ -90,6 +105,20 @@ export function MeetingRoom({
 
   // Auto-scroll ref for the transcript box
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
+
+  // Helper to append a transcript entry
+  const addTranscript = (user: string, text: string, customId?: string) => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const id = customId || `transcript-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setTranscripts((prev) => [...prev, { id, user, text, time }]);
+    setInterimTranscript(null);
+    return { id, time };
+  };
+
+  // Helper to extract role for local or remote participant
+  const getParticipantRole = (p: Participant): string => {
+    return p.identity === localParticipant.identity ? userRole : parseParticipantRole(p);
+  };
 
   // Auto-scroll inside the box whenever new transcripts or speech arrive
   useEffect(() => {
@@ -103,43 +132,24 @@ export function MeetingRoom({
 
   // Check if transcriber agent worker is currently connected to the room
   const agentParticipant = useMemo(() => {
-    return remoteParticipants.find(
-      (p) =>
+    console.log('[Meeting Room] All remoteParticipants:', remoteParticipants);
+
+    return remoteParticipants.find((p) => {
+      console.log('[Meeting Room] Checking participant p:', p, {
+        identity: p.identity,
+        name: p.name,
+        isAgent: p.isAgent,
+        metadata: p.metadata,
+      });
+
+      return (
         p.isAgent ||
         p.identity.toLowerCase().startsWith('agent-') ||
         p.name?.toLowerCase().includes('agent')
-    );
+      );
+    });
   }, [remoteParticipants]);
   const isAgentConnected = !!agentParticipant;
-
-  const [isDispatchingAgent, setIsDispatchingAgent] = useState(false);
-
-  // Dispatch agent worker to join this room via API
-  const handleDispatchAgent = useCallback(async () => {
-    setIsDispatchingAgent(true);
-    try {
-      const res = await fetch('/api/agent/dispatch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: tokenId }),
-      });
-      const data = await res.json();
-      console.log('[MeetingRoom] Agent dispatch response:', data);
-    } catch (err) {
-      console.error('[MeetingRoom] Failed to dispatch agent:', err);
-    } finally {
-      setIsDispatchingAgent(false);
-    }
-  }, [tokenId]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!isAgentConnected) {
-        handleDispatchAgent();
-      }
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [isAgentConnected, handleDispatchAgent]);
 
   // Filter out background agent workers from human video list
   const humanRemoteParticipants = useMemo(() => {
@@ -175,7 +185,7 @@ export function MeetingRoom({
     return () => clearInterval(timer);
   }, []);
 
-  // Meeting timer from .env.local (default 30 mins)
+  // Meeting timer from (default 30 mins)
   const durationMinutes = Number(process.env.NEXT_PUBLIC_MEETING_DURATION_MINUTES) || 30;
   const remainingSeconds = Math.max(0, durationMinutes * 60 - elapsedSeconds);
   const isTimeExpiring = remainingSeconds <= 300 && remainingSeconds > 0; // < 5 mins
@@ -193,7 +203,7 @@ export function MeetingRoom({
     const localEmail = localParticipant.name || localParticipant.identity || userEmail;
     const initialTime = new Date().toLocaleTimeString();
 
-    console.log(`[Meeting Activity] Local participant JOINED: ${localEmail} at ${initialTime}`);
+    console.log(`Meeting Activity - Local participant JOINED: ${localEmail} at ${initialTime}`);
 
     setActivityLogs([
       {
@@ -215,16 +225,7 @@ export function MeetingRoom({
 
       const email = participant.name || participant.identity || 'Participant';
       const time = new Date().toLocaleTimeString();
-
-      let role = 'Candidate';
-      try {
-        if (participant.metadata) {
-          const parsed = JSON.parse(participant.metadata);
-          if (parsed.role) role = parsed.role;
-        }
-      } catch {
-        // fallback
-      }
+      const role = parseParticipantRole(participant);
 
       console.log(`[Meeting Activity] Participant JOINED: ${email} (${role}) at ${time}`);
 
@@ -249,16 +250,7 @@ export function MeetingRoom({
 
       const email = participant.name || participant.identity || 'Participant';
       const time = new Date().toLocaleTimeString();
-
-      let role = 'Candidate';
-      try {
-        if (participant.metadata) {
-          const parsed = JSON.parse(participant.metadata);
-          if (parsed.role) role = parsed.role;
-        }
-      } catch {
-        // fallback
-      }
+      const role = parseParticipantRole(participant);
 
       console.log(`[Meeting Activity] Participant LEFT: ${email} (${role}) at ${time}`);
 
@@ -288,17 +280,7 @@ export function MeetingRoom({
           );
 
           if (data.isFinal) {
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            setTranscripts((prev) => [
-              ...prev,
-              {
-                id: `transcript-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                user: data.user || 'Speaker',
-                text: data.text,
-                time: timeStr,
-              },
-            ]);
-            setInterimTranscript(null);
+            addTranscript(data.user || 'Speaker', data.text);
           } else {
             console.log(`[LIVE] ${data.user}: ${data.text}`);
             setInterimTranscript({ user: data.user || 'Speaker', text: data.text });
@@ -309,16 +291,173 @@ export function MeetingRoom({
       }
     };
 
+    // 5. Official LiveKit Cloud native transcription event listener
+    const handleTranscriptionReceived = (
+      segments: TranscriptionSegment[],
+      participant?: Participant
+    ) => {
+      const speaker = participant?.name || participant?.identity?.split('@')[0] || 'Speaker';
+      for (const segment of segments) {
+        if (!segment.text?.trim()) continue;
+        console.log(
+          `%c[LiveKit Transcription] ${speaker}: "${segment.text}" (final: ${segment.final})`,
+          'color: #9333ea; font-weight: bold; font-size: 13px; background: #F3E8FF; padding: 2px 6px; border-radius: 4px;'
+        );
+
+        if (segment.final) {
+          addTranscript(speaker, segment.text, segment.id);
+        } else {
+          setInterimTranscript({ user: speaker, text: segment.text });
+        }
+      }
+    };
+
     room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
     room.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
     room.on(RoomEvent.DataReceived, handleDataReceived);
+    room.on(RoomEvent.TranscriptionReceived, handleTranscriptionReceived);
 
     return () => {
       room.off(RoomEvent.ParticipantConnected, handleParticipantConnected);
       room.off(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
       room.off(RoomEvent.DataReceived, handleDataReceived);
+      room.off(RoomEvent.TranscriptionReceived, handleTranscriptionReceived);
     };
   }, [room, localParticipant, userEmail, userRole]);
+
+  // Real-time Browser Speech Recognition (captures local speech and broadcasts to room)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition =
+      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition ||
+      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) return;
+
+    if (!isMicrophoneEnabled) {
+      setInterimTranscript(null);
+      return;
+    }
+
+    let recognition: any = null;
+    let isStoppedManually = false;
+
+    try {
+      recognition = new (SpeechRecognition as any)();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: any) => {
+        let interimText = '';
+        const myName =
+          localParticipant.name ||
+          localParticipant.identity.split('@')[0] ||
+          userEmail.split('@')[0] ||
+          'You';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const res = event.results[i];
+          const spoken = res[0]?.transcript?.trim();
+          if (!spoken) continue;
+
+          if (res.isFinal) {
+            const { id: newId, time: timeStr } = addTranscript(`${myName} (You)`, spoken);
+
+            // Broadcast to other participants in the meeting room
+            if (room?.localParticipant) {
+              const payload = new TextEncoder().encode(
+                JSON.stringify({
+                  type: 'transcription',
+                  user: myName,
+                  text: spoken,
+                  isFinal: true,
+                  time: timeStr,
+                  id: newId,
+                })
+              );
+              room.localParticipant
+                .publishData(payload, { topic: 'transcription', reliable: true })
+                .catch(() => {});
+            }
+          } else {
+            interimText += spoken + ' ';
+          }
+        }
+
+        if (interimText.trim()) {
+          setInterimTranscript({ user: `${myName} (You)`, text: interimText.trim() });
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
+          console.warn('[STT] Speech recognition warning:', e.error);
+        }
+      };
+
+      recognition.onend = () => {
+        if (!isStoppedManually && isMicrophoneEnabled) {
+          try {
+            recognition.start();
+          } catch {}
+        }
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.warn('[STT] Speech recognition start error:', err);
+    }
+
+    return () => {
+      isStoppedManually = true;
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch {}
+      }
+    };
+  }, [isMicrophoneEnabled, localParticipant, userEmail, room]);
+
+  // Handler to download transcript exclusively as a clean 
+  const handleDownloadTranscript = () => {
+    if (transcripts.length === 0) return;
+
+    const now = new Date();
+    const cleanRoomCode = tokenId || 'meeting';
+    const divider = '='.repeat(70);
+
+    const content = [
+      divider,
+      'CONNECTEC MEET - MEETING TRANSCRIPT',
+      divider,
+      `Room Code     : ${cleanRoomCode}`,
+      `Meeting Date  : ${now.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `Downloaded At : ${now.toLocaleTimeString()}`,
+      `Total Lines   : ${transcripts.length}`,
+      divider,
+      '',
+      'TRANSCRIPT LOG:',
+      '-'.repeat(70),
+      '',
+      ...transcripts.map((t) => `[${t.time}] ${t.user}:\n${t.text}\n`),
+      divider,
+      'End of Transcript',
+      divider,
+      '',
+    ].join('\n');
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `meeting-transcript-${cleanRoomCode}-${now.toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   // Media toggle handlers
   const handleToggleMic = async () => {
@@ -349,28 +488,8 @@ export function MeetingRoom({
     try {
       room.disconnect();
     } finally {
-      router.push('/login');
+      router.push('/');
     }
-  };
-
-  const handleCopyLink = () => {
-    if (typeof window === 'undefined') return;
-    navigator.clipboard.writeText(window.location.href);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  // Helper to extract role from participant metadata
-  const getParticipantRole = (p: Participant): string => {
-    try {
-      if (p.metadata) {
-        const parsed = JSON.parse(p.metadata);
-        if (parsed.role) return parsed.role;
-      }
-    } catch {
-      // fallback
-    }
-    return p.identity === localParticipant.identity ? userRole : 'Candidate';
   };
 
   // Grid layout depending on participant count
@@ -435,10 +554,8 @@ export function MeetingRoom({
           </div>
         </div>
 
-        {/* Right: Agent Status Badge + Participants Info Button */}
+        {/* Right: Participants Info Button */}
         <div className="flex items-center gap-2.5">
-         
-          {/* Info Button in Top Bar */}
           <button
             type="button"
             onClick={() => setIsInfoOpen(!isInfoOpen)}
@@ -471,12 +588,8 @@ export function MeetingRoom({
               getParticipantRole={getParticipantRole}
             />
 
-            {/* 2. AI Transcriber Agent Participant Tile */}
-            <AiAgentTile
-              isConnected={isAgentConnected}
-              isDispatching={isDispatchingAgent}
-              onConnect={handleDispatchAgent}
-            />
+            {/* 2. AI Transcriber Agent Participant Tile (when connected) */}
+            {isAgentConnected && <AiAgentTile isConnected={isAgentConnected} />}
 
             {/* 3. Remote human participants */}
             {humanRemoteParticipants.map((p) => (
@@ -507,7 +620,7 @@ export function MeetingRoom({
 
       {/* ================= 3. CONNECT EC BOTTOM CONTROL BAR ================= */}
       <footer className="relative z-20 flex h-20 w-full shrink-0 items-center justify-center border-t border-[#D1E5FF] bg-white/95 px-4 sm:px-6 backdrop-blur-md shadow-lg">
-        <div className="flex items-center justify-center gap-2.5 sm:gap-3">
+        <div className="flex items-center justify-center gap-2 sm:gap-3">
           {/* Microphone Toggle */}
           <button
             type="button"
@@ -558,6 +671,27 @@ export function MeetingRoom({
             <Screencast weight={isScreenShareEnabled ? 'fill' : 'bold'} className="size-5" />
           </button>
 
+          {/* Live Transcript / Subtitles Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsTranscriptVisible(!isTranscriptVisible)}
+            className={`relative flex size-11 cursor-pointer items-center justify-center rounded-full shadow-xs transition-all active:scale-95 sm:size-12 ${
+              isTranscriptVisible
+                ? 'bg-[#0668E1] text-white shadow-[#0668E1]/25 hover:bg-[#005FCC]'
+                : 'border border-[#B2D0F6] bg-[#F2F8FF] text-[#0668E1] hover:bg-[#E5F0FF]'
+            }`}
+            title={isTranscriptVisible ? 'Hide live transcript box' : 'Show live transcript box'}
+          >
+            <ChatText weight={isTranscriptVisible ? 'fill' : 'bold'} className="size-5" />
+            {transcripts.length > 0 && !isTranscriptVisible && (
+              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white shadow-xs">
+                {transcripts.length > 99 ? '99+' : transcripts.length}
+              </span>
+            )}
+          </button>
+
+       
+
           {/* Leave Call Button */}
           <button
             type="button"
@@ -577,18 +711,52 @@ export function MeetingRoom({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-[#E5EFFF] pb-2.5">
             <div className="flex items-center gap-2">
-            
+              <div className="flex size-7 items-center justify-center rounded-lg bg-[#0668E1]/10 text-[#0668E1]">
+                <ChatText className="size-4" weight="bold" />
+              </div>
               <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm text-[#1B1C17]">
                 <span>Live Transcript</span>
-                
-                
-                 
+                {transcripts.length > 0 && (
+                  <span className="rounded-full bg-[#EBF3FF] px-2 py-0.5 text-[10px] font-semibold text-[#0668E1]">
+                    {transcripts.length} {transcripts.length === 1 ? 'line' : 'lines'}
+                  </span>
+                )}
               </div>
             </div>
 
+            {/* Actions: Download .txt, Collapse, Close */}
             <div className="flex items-center gap-1.5">
-            
-              
+              {/* Direct Download Button (.txt only) */}
+              <button
+                type="button"
+                onClick={handleDownloadTranscript}
+                disabled={transcripts.length === 0}
+                className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#0668E1] px-3 py-1 text-xs font-bold text-white shadow-xs hover:bg-[#005FCC] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+                title="Download speech transcript as a .txt text file"
+              >
+                <DownloadSimple className="size-3.5" weight="bold" />
+                <span>Download .txt</span>
+              </button>
+
+              {/* Minimize/Expand Button */}
+              <button
+                type="button"
+                onClick={() => setIsTranscriptCollapsed(!isTranscriptCollapsed)}
+                className="flex size-7 cursor-pointer items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 transition-colors"
+                title={isTranscriptCollapsed ? 'Expand transcript box' : 'Collapse transcript box'}
+              >
+                {isTranscriptCollapsed ? <CaretUp className="size-3.5" /> : <CaretDown className="size-3.5" />}
+              </button>
+
+              {/* Close/Hide Box */}
+              <button
+                type="button"
+                onClick={() => setIsTranscriptVisible(false)}
+                className="flex size-7 cursor-pointer items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 transition-colors"
+                title="Hide transcript box (can reopen anytime from control bar)"
+              >
+                <X className="size-3.5" />
+              </button>
             </div>
           </div>
 
@@ -680,13 +848,15 @@ function ParticipantTile({
   );
   const hasVideo = !!camTrack && participant.isCameraEnabled;
   const isMicMuted = !participant.isMicrophoneEnabled;
+  
 
-  const initials = displayName
-    .split('@')[0]
-    .replace(/[^a-zA-Z0-9]/g, ' ')
-    .trim()
-    .slice(0, 2)
-    .toUpperCase() || 'U';
+  const initials =
+    displayName
+      .split('@')[0]
+      .replace(/[^a-zA-Z0-9]/g, ' ')
+      .trim()
+      .slice(0, 2)
+      .toUpperCase() || 'U';
 
   const avatarColor =
     role === 'Candidate'
@@ -723,7 +893,6 @@ function ParticipantTile({
           />
         </div>
       ) : (
-        /* Connect EC Avatar Fallback */
         <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-neutral-900 via-neutral-950 to-neutral-900 p-4">
           <div className="relative flex items-center justify-center">
             {/* Speaking Halo Animation */}
@@ -736,9 +905,7 @@ function ParticipantTile({
               {initials}
             </div>
           </div>
-          <span className="mt-3 text-xs font-semibold text-neutral-300">
-            {role}
-          </span>
+          <span className="mt-3 text-xs font-semibold text-neutral-300">{role}</span>
         </div>
       )}
 
@@ -748,7 +915,7 @@ function ParticipantTile({
         <span>{role}</span>
       </div>
 
-      {/* Bottom Tile Bar: Participant's Mail ID + Mic Icon */}
+      {/* Bottom Tile Bar: Participant Name + Mic Icon */}
       <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-between bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-6 text-xs text-white">
         <span className="truncate font-semibold drop-shadow-sm flex items-center gap-1.5">
           <span>{displayName}</span>
@@ -773,23 +940,13 @@ function ParticipantTile({
 }
 
 // Subcomponent for AI Transcriber Agent Tile
-function AiAgentTile({
-  isConnected,
-
-}: {
-  isConnected: boolean;
-  isDispatching: boolean;
-  onConnect: () => void;
-}) {
+function AiAgentTile({ isConnected }: { isConnected: boolean }) {
   return (
     <div
-      className={`group relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-2xl border bg-neutral-900 shadow-md transition-all
-        border-purple-500 ring-2 ring-purple-500/40 shadow-[0_0_20px_rgba(168,85,247,0.3)]`
-      }
+      className="group relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-2xl border bg-neutral-900 shadow-md transition-all border-purple-500 ring-2 ring-purple-500/40 shadow-[0_0_20px_rgba(168,85,247,0.3)]"
     >
       <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-neutral-900 via-neutral-950 to-neutral-900 p-4">
         <div className="relative flex items-center justify-center">
-          
           <div
             className={`flex size-20 sm:size-24 items-center justify-center rounded-full text-white shadow-xl ring-4 ${
               isConnected
@@ -797,14 +954,13 @@ function AiAgentTile({
                 : 'bg-neutral-800 ring-neutral-700 text-neutral-400'
             }`}
           >
+            <Robot weight="bold" className="size-10 text-white" />
           </div>
         </div>
 
         <span className="mt-3 text-xs font-semibold text-neutral-200">
           Connect Ec AI
         </span>
-
-        
       </div>
 
       {/* Top-left Role Badge */}
@@ -819,9 +975,7 @@ function AiAgentTile({
           <Sparkle className="size-3.5 text-purple-400" weight="fill" />
           <span>Connect EC AI Assistant</span>
         </span>
-        
       </div>
     </div>
   );
 }
-
