@@ -227,7 +227,7 @@ export default function LoginPage() {
       <header className="fixed top-0 left-0 right-0 z-50 flex h-20 w-full items-center justify-between border-b border-[#D8E9FF]/80 bg-white/85 px-6 backdrop-blur-md sm:px-12 dark:border-neutral-800 dark:bg-neutral-900/85">
         <Link href="/" className="flex items-center transition-opacity hover:opacity-90">
           <Image
-            src="/connect_ec_logo.svg"
+            src="/Connect_EC_Logo.svg"
             alt="Connect EC Logo"
             width={190}
             height={38}

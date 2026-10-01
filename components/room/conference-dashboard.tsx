@@ -172,7 +172,7 @@ export function ConferenceDashboard() {
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center transition-opacity hover:opacity-90">
             <Image
-              src="/connect_ec_logo.svg"
+              src="/Connect_EC_Logo.svg"
               alt="Connect EC Logo"
               width={190}
               height={38}
